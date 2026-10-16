@@ -1,0 +1,108 @@
+# Builds SquatchBrowse for Linux (.deb) and Windows (installer .exe) and publishes
+# both as one GitHub release. SquatchVault's "Get the App" page offers the newest one.
+name: Build desktop
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: never
+  VERSION: 1.${{ github.run_number }}
+
+jobs:
+  linux:
+    # Built on the older LTS so the package also runs on older Ubuntu/Mint/Debian.
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libsoup-3.0-dev build-essential
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build and package
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo install cargo-deb --locked --quiet
+          set +e
+          cargo deb --deb-version "$VERSION" 2>&1 | tee build.log
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            summary=$( (grep -E -A12 "^error" build.log || true) | head -150)
+            [ -z "$summary" ] && summary=$(tail -60 build.log)
+            summary="${summary//'%'/'%25'}"; summary="${summary//$'\r'/}"; summary="${summary//$'\n'/'%0A'}"
+            echo "::error title=Linux build failed::${summary}"
+            exit 1
+          fi
+          mkdir -p dist
+          cp target/debian/*.deb "dist/SquatchBrowse-${VERSION}.deb"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: dist/
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        shell: bash
+        run: |
+          set -o pipefail
+          set +e
+          cargo build --release 2>&1 | tee build.log
+          status=$?
+          set -e
+          if [ "$status" -ne 0 ]; then
+            summary=$( (grep -E -A12 "^error" build.log || true) | head -150)
+            [ -z "$summary" ] && summary=$(tail -60 build.log)
+            summary="${summary//'%'/'%25'}"; summary="${summary//$'\r'/}"; summary="${summary//$'\n'/'%0A'}"
+            echo "::error title=Windows build failed::${summary}"
+            exit 1
+          fi
+      - name: Make installer
+        shell: pwsh
+        run: |
+          $iscc = Get-Command iscc -ErrorAction SilentlyContinue
+          if (-not $iscc) {
+            $path = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+            if (-not (Test-Path $path)) { choco install innosetup -y --no-progress | Out-Null }
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          } else { $iscc = $iscc.Source }
+          & $iscc /Qp "/DAppVersion=$env:VERSION" packaging\windows-installer.iss
+          if ($LASTEXITCODE -ne 0) { echo "::error title=Installer::Inno Setup failed"; exit 1 }
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Move-Item "packaging\Output\SquatchBrowse-Setup.exe" "dist\SquatchBrowse-Setup-$env:VERSION.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/
+
+  release:
+    needs: [linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -la dist
+          gh release create "v${VERSION}" dist/* \
+            --repo "${{ github.repository }}" \
+            --title "SquatchBrowse ${VERSION}" \
+            --notes "Linux (.deb for Ubuntu, Mint, Debian, Pop!_OS) and Windows 10/11 installer. Built from ${GITHUB_SHA::7}."

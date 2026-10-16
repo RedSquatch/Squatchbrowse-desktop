@@ -1,0 +1,251 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  :root {
+    --bg: #1b1d20; --bg2: #25282c; --bg3: #2f3338; --fg: #e4e1da; --muted: #8f8b84;
+    --accent: #e0a85a; --ok: #7cc48a; --warn: #e0a85a; --off: #d0706a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg);
+    font: 13px/1 system-ui, "Inter", "DejaVu Sans", sans-serif; overflow: hidden; user-select: none; }
+  .bar { display: flex; align-items: center; gap: 4px; height: 46px; padding: 0 8px;
+    border-bottom: 1px solid #000; }
+  button { all: unset; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 8px;
+    border-radius: 7px; color: var(--fg); cursor: default; white-space: nowrap; }
+  button:hover { background: var(--bg3); }
+  button:active { background: #3a3f45; }
+  button.icon { width: 30px; padding: 0; justify-content: center; }
+  button[disabled] { opacity: .35; pointer-events: none; }
+  button.on { color: var(--accent); }
+  svg { width: 17px; height: 17px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .sep { width: 1px; height: 20px; background: var(--bg3); margin: 0 4px; }
+
+  .url { flex: 1; position: relative; display: flex; align-items: center; height: 32px; min-width: 120px;
+    background: var(--bg2); border-radius: 8px; border: 1px solid transparent; }
+  .url:focus-within { border-color: var(--accent); }
+  .url input { all: unset; flex: 1; height: 100%; padding: 0 10px; color: var(--fg); user-select: text; font-size: 13.5px; }
+  .url .load { position: absolute; left: 8px; right: 8px; bottom: 0; height: 2px; border-radius: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent); background-size: 50% 100%;
+    animation: slide 1s linear infinite; opacity: 0; transition: opacity .2s; }
+  .url.loading .load { opacity: 1; }
+  @keyframes slide { from { background-position: -50% 0; } to { background-position: 150% 0; } }
+
+  .shield { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; height: 30px; border-radius: 7px; color: var(--muted); }
+  .shield .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); }
+  .shield.on .dot { background: var(--ok); }
+  .shield.off .dot { background: var(--off); }
+  .shield.busy .dot { animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .3; } }
+
+  .chip { display: none; align-items: center; gap: 2px; height: 26px; padding: 0 4px 0 10px; border-radius: 13px;
+    background: #3a2e1d; color: var(--accent); }
+  .chip.show { display: inline-flex; }
+  .chip button { height: 22px; padding: 0 6px; border-radius: 11px; color: var(--accent); }
+
+  .toast { position: fixed; right: 10px; top: 8px; height: 30px; max-width: 60%; display: flex; align-items: center;
+    padding: 0 14px; border-radius: 8px; background: #3b4148; color: #fff; box-shadow: 0 2px 12px #0008;
+    opacity: 0; transform: translateY(-6px); transition: opacity .18s, transform .18s; pointer-events: none;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .toast.show { opacity: 1; transform: none; }
+  .count { font-size: 11px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px; background: var(--accent); color: #1b1d20;
+    display: none; align-items: center; justify-content: center; font-weight: 600; }
+  .count.show { display: inline-flex; }
+
+  .tabs { display: flex; align-items: flex-end; gap: 2px; height: 38px; padding: 6px 8px 0; background: #131416;
+    overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { position: relative; display: flex; align-items: center; gap: 8px; flex: 0 1 220px; min-width: 64px; height: 32px;
+    padding: 0 6px 0 12px; border-radius: 8px 8px 0 0; color: var(--muted); cursor: default; }
+  .tab:hover { background: #1f2124; color: var(--fg); }
+  .tab.active { background: var(--bg); color: var(--fg); }
+  .tab .t { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 12.5px;
+    mask-image: linear-gradient(90deg, #000 85%, transparent); }
+  .tab .spin { width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--accent); border-right-color: transparent;
+    animation: spin .7s linear infinite; flex: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .tab .x { all: unset; width: 20px; height: 20px; border-radius: 5px; display: grid; place-items: center; font-size: 12px; opacity: 0; flex: none; }
+  .tab:hover .x, .tab.active .x { opacity: .7; }
+  .tab .x:hover { opacity: 1; background: var(--bg3); }
+  .newtab { all: unset; flex: none; width: 28px; height: 28px; margin: 0 0 2px 4px; border-radius: 7px; display: grid; place-items: center; color: var(--muted); }
+  .newtab:hover { background: #1f2124; color: var(--fg); }
+  .sec { all: unset; display: none; align-items: center; gap: 5px; height: 26px; margin-left: 4px; padding: 0 6px; border-radius: 6px;
+    font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .sec:hover { background: var(--bg3); }
+  .sec svg { width: 14px; height: 14px; }
+  .sec.show { display: inline-flex; }
+  .sec.secure { color: var(--ok); }
+  .sec.insecure, .sec.warning { color: var(--off); }
+  .url input { padding-left: 8px; }
+  .star { all: unset; width: 28px; height: 28px; margin-right: 2px; display: grid; place-items: center; border-radius: 6px; color: var(--muted); }
+  .star:hover { color: var(--fg); background: var(--bg3); }
+  .star.on { color: var(--accent); }
+  .star.on svg { fill: var(--accent); }
+  .star.hide { display: none; }
+  @media (max-width: 900px) { .label { display: none; } }
+</style>
+</head>
+<body>
+<div class="tabs" id="tabs"></div>
+<div class="bar">
+  <button class="icon" data-cmd="back" title="Back (Alt+←)"><svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg></button>
+  <button class="icon" data-cmd="forward" title="Forward (Alt+→)"><svg viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></svg></button>
+  <button class="icon" data-cmd="reload" title="Reload (F5)"><svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 5v6h-6"/></svg></button>
+  <button class="icon" data-cmd="home" title="Home"><svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/></svg></button>
+
+  <form class="url" id="urlbox">
+    <button type="button" class="sec" id="sec" title=""></button>
+    <input id="url" spellcheck="false" autocomplete="off" placeholder="Search or enter address">
+    <button type="button" class="star hide" id="star" title="Bookmark this page (Ctrl+D)"><svg viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z"/></svg></button>
+    <div class="load"></div>
+  </form>
+
+  <button class="icon" data-cmd="bookmarks" title="Bookmarks (Ctrl+Shift+O)"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4z"/></svg></button>
+  <span class="shield busy" id="shield" title="Ad and tracker blocking"><span class="dot"></span><span class="label" id="shieldText">Shield</span></span>
+  <span class="chip" id="popup" title=""><span>Popup blocked</span>
+    <button id="popupOpen" title="Open it in a new tab anyway">Open</button>
+    <button id="popupClose" title="Dismiss">✕</button></span>
+
+  <div class="sep"></div>
+  <button data-cmd="reader" title="Reader view (F9): just the story, no clutter">
+    <svg viewBox="0 0 24 24"><path d="M4 5h7a2 2 0 0 1 2 2v12a2 2 0 0 0-2-2H4z"/><path d="M20 5h-5a2 2 0 0 0-2 2v12a2 2 0 0 1 2-2h5z"/></svg><span class="label">Reader</span></button>
+  <button data-cmd="unstick" title="Unstick: remove overlays and popups, unlock scrolling">
+    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg><span class="label">Unstick</span></button>
+  <button data-cmd="zap" title="Zap: click any element to remove it (Shift+click = remove on every visit, Esc = done)">
+    <svg viewBox="0 0 24 24"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></svg><span class="label">Zap</span></button>
+  <button data-cmd="video" id="videoBtn" title="Save video or audio from this page (MP4, 4K, audio, MP3)">
+    <svg viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg><span class="label">Save</span><span class="count" id="vcount"></span></button>
+
+  <div class="sep"></div>
+  <button class="icon on" data-cmd="toggle-https" id="httpsBtn" title="HTTPS-only is ON. Click to allow plain http sites"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></button>
+  <button class="icon" data-cmd="toggle-js" id="jsBtn" title="Scripts are ON. Click to turn off (lighter pages, but Reader/Zap/Unstick need scripts)">
+    <svg viewBox="0 0 24 24"><path d="M8 7l-5 5 5 5M16 7l5 5-5 5"/></svg></button>
+  <button class="icon" data-cmd="open-videos" title="Open saved videos folder"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
+  <button class="icon" data-cmd="edit-filters" title="Edit my filters"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button>
+  <button class="icon" data-cmd="update-lists" title="Update filter lists now"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></button>
+  <button class="icon" data-cmd="devtools" title="Developer tools (F12)"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-.5-.5-2.5z"/></svg></button>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+  const post = (o) => window.ipc.postMessage(JSON.stringify(o));
+  const $ = (id) => document.getElementById(id);
+  const url = $('url'), box = $('urlbox');
+  let popupUrl = null, toastTimer = null, editing = false;
+
+  document.querySelectorAll('[data-cmd]').forEach((b) =>
+    b.addEventListener('click', () => post({ cmd: b.dataset.cmd })));
+
+  box.addEventListener('submit', (e) => { e.preventDefault(); editing = false; post({ cmd: 'navigate', input: url.value }); url.blur(); });
+  url.addEventListener('focus', () => { editing = true; setTimeout(() => url.select(), 0); });
+  url.addEventListener('blur', () => { editing = false; });
+  url.addEventListener('keydown', (e) => { if (e.key === 'Escape') { url.value = url.dataset.current || ''; url.blur(); } });
+
+  $('popupOpen').addEventListener('click', () => { if (popupUrl) post({ cmd: 'open-popup', url: popupUrl }); $('popup').classList.remove('show'); });
+  $('popupClose').addEventListener('click', () => $('popup').classList.remove('show'));
+
+  window.addEventListener('keydown', (e) => {
+    const k = e.key;
+    if ((e.ctrlKey && k.toLowerCase() === 'l') || k === 'F6') { e.preventDefault(); url.focus(); }
+    else if (k === 'F5') { e.preventDefault(); post({ cmd: 'reload' }); }
+    else if (k === 'F9') { e.preventDefault(); post({ cmd: 'reader' }); }
+    else if (k === 'F12') { e.preventDefault(); post({ cmd: 'devtools' }); }
+    else if (e.altKey && k === 'ArrowLeft') post({ cmd: 'back' });
+    else if (e.altKey && k === 'ArrowRight') post({ cmd: 'forward' });
+    else if (e.ctrlKey && !e.shiftKey && k.toLowerCase() === 't') { e.preventDefault(); post({ cmd: 'new-tab' }); }
+    else if (e.ctrlKey && k.toLowerCase() === 'w') { e.preventDefault(); post({ cmd: 'close-tab' }); }
+    else if (e.ctrlKey && k === 'Tab') { e.preventDefault(); post({ cmd: e.shiftKey ? 'prev-tab' : 'next-tab' }); }
+    else if (e.ctrlKey && /^[1-9]$/.test(k)) { e.preventDefault(); post({ cmd: 'tab-index', n: +k }); }
+    else if (e.ctrlKey && !e.shiftKey && k.toLowerCase() === 'd') { e.preventDefault(); post({ cmd: 'bookmark' }); }
+    else if (e.ctrlKey && e.shiftKey && k.toLowerCase() === 'o') { e.preventDefault(); post({ cmd: 'bookmarks' }); }
+  });
+
+  $('star').addEventListener('click', () => post({ cmd: 'bookmark' }));
+
+  // ---- tab strip ----
+  const tabsEl = $('tabs');
+  function esc(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+  function renderTabs(list) {
+    tabsEl.innerHTML = list.map((t) =>
+      '<div class="tab' + (t.active ? ' active' : '') + '" data-id="' + t.id + '" title="' + esc(t.title) + '">' +
+      (t.loading ? '<span class="spin"></span>' : '') +
+      '<span class="t">' + esc(t.title) + '</span>' +
+      '<button class="x" data-close="' + t.id + '" title="Close tab (Ctrl+W)">✕</button></div>'
+    ).join('') + '<button class="newtab" id="newtab" title="New tab (Ctrl+T)">+</button>';
+    const a = tabsEl.querySelector('.tab.active');
+    if (a) a.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+  }
+  tabsEl.addEventListener('mousedown', (e) => {
+    const tab = e.target.closest('.tab');
+    if (e.button === 1 && tab) { e.preventDefault(); post({ cmd: 'close-tab', id: +tab.dataset.id }); }
+  });
+  tabsEl.addEventListener('click', (e) => {
+    const x = e.target.closest('[data-close]');
+    if (x) { post({ cmd: 'close-tab', id: +x.dataset.close }); return; }
+    const tab = e.target.closest('.tab');
+    if (tab) { post({ cmd: 'select-tab', id: +tab.dataset.id }); return; }
+    if (e.target.closest('#newtab')) post({ cmd: 'new-tab' });
+  });
+  tabsEl.addEventListener('dblclick', (e) => { if (e.target === tabsEl) post({ cmd: 'new-tab' }); });
+  tabsEl.addEventListener('wheel', (e) => { tabsEl.scrollLeft += e.deltaY; }, { passive: true });
+
+  const LOCK = '<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>';
+  const OPEN = '<svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>';
+  const HOUSE = '<svg viewBox="0 0 24 24"><path d="M4 11l8-7 8 7"/><path d="M6 10v10h12V10"/></svg>';
+  const SEC = {
+    secure:   { html: LOCK, tip: 'Secure connection: the page is encrypted and the certificate is valid.' },
+    insecure: { html: OPEN + '<span>Not secure</span>', tip: 'Not encrypted. Don\'t type passwords or payment details on this page.' },
+    warning:  { html: OPEN + '<span>Check</span>', tip: 'Encrypted, but WebKit reported a certificate issue or mixed content. Be careful what you type.' },
+    local:    { html: HOUSE, tip: 'Home network device, not encrypted. Fine on your own network.' },
+  };
+  $('sec').addEventListener('click', () => { const t = $('sec').dataset.tip; if (t) ui.set({ toast: t }); });
+  const SHIELD_TEXT = { on: 'Shield on', off: 'Shield off', loading: 'Loading shield', compiling: 'Compiling filters', rebuilding: 'Rebuilding filters', 'updating lists': 'Updating lists' };
+
+  window.ui = {
+    set(s) {
+      if ('url' in s && !editing) { url.value = s.url || ''; url.dataset.current = s.url || ''; $('star').classList.toggle('hide', !s.url); }
+      if ('tabs' in s) renderTabs(s.tabs);
+      if ('security' in s) {
+        const el = $('sec'), d = SEC[s.security];
+        el.className = 'sec' + (d ? ' show ' + s.security : '');
+        el.innerHTML = d ? d.html : '';
+        el.dataset.tip = d ? d.tip : '';
+        el.title = d ? d.tip : '';
+      }
+      if ('starred' in s) { $('star').classList.toggle('on', !!s.starred); $('star').title = s.starred ? 'Remove bookmark (Ctrl+D)' : 'Bookmark this page (Ctrl+D)'; }
+      if ('loading' in s) box.classList.toggle('loading', !!s.loading);
+      if ('shield' in s) {
+        const el = $('shield');
+        el.className = 'shield ' + (s.shield === 'on' ? 'on' : s.shield === 'off' ? 'off' : 'busy');
+        $('shieldText').textContent = SHIELD_TEXT[s.shield] || s.shield;
+        el.title = s.rules ? `${s.rules.toLocaleString()} blocking rules` : 'Ad and tracker blocking';
+      }
+      if ('videos' in s) {
+        const n = s.videos | 0, c = $('vcount');
+        c.textContent = n; c.classList.toggle('show', n > 0);
+      }
+      if ('js' in s) {
+        $('jsBtn').classList.toggle('on', !s.js);
+        $('jsBtn').title = s.js ? 'Scripts are ON. Click to turn off (lighter pages, but Reader/Zap/Unstick need scripts)' : 'Scripts are OFF. Click to turn back on';
+      }
+      if ('https' in s) {
+        const b = $('httpsBtn');
+        b.classList.toggle('on', !!s.https);
+        b.innerHTML = s.https ? LOCK : OPEN;
+        b.title = s.https ? 'HTTPS-only is ON. Click to allow plain http sites' : 'HTTPS-only is OFF. Click to upgrade http links and warn before unencrypted sites';
+      }
+      if ('popup' in s) { popupUrl = s.popup; $('popup').title = s.popup; $('popup').classList.add('show'); }
+      if ('focusUrl' in s) url.focus();
+      if ('toast' in s && s.toast) {
+        const t = $('toast');
+        t.textContent = s.toast; t.title = s.toast; t.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => t.classList.remove('show'), Math.min(9000, 2500 + s.toast.length * 45));
+      }
+    },
+  };
+  post({ cmd: 'ready' });
+</script>
+</body>
+</html>

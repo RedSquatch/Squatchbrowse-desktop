@@ -1,0 +1,216 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Bookmarks</title>
+<style>
+  :root { --bg: #1b1d20; --bg2: #25282c; --bg3: #2f3338; --fg: #e4e1da; --muted: #8f8b84; --accent: #e0a85a; --line: #2a2d31; }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, "Inter", "DejaVu Sans", sans-serif; }
+  body { margin: 0; padding: 56px 24px 80px; }
+  main { max-width: 760px; margin: 0 auto; }
+  .search { display: flex; align-items: center; gap: 10px; height: 48px; padding: 0 16px; background: var(--bg2);
+    border: 1px solid transparent; border-radius: 12px; }
+  .search:focus-within { border-color: var(--accent); }
+  .search svg { width: 18px; height: 18px; stroke: var(--muted); fill: none; stroke-width: 2; flex: none; }
+  .search input { all: unset; flex: 1; font-size: 16px; color: var(--fg); }
+  .hint { color: var(--muted); font-size: 12px; margin: 8px 4px 28px; }
+  .head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; }
+  .head h1 { font-size: 15px; font-weight: 600; margin: 0; flex: 1; }
+  .head button, .row button { all: unset; color: var(--muted); font-size: 12.5px; padding: 4px 8px; border-radius: 6px; cursor: default; }
+  .head button:hover, .row button:hover { color: var(--fg); background: var(--bg3); }
+  h2 { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 26px 0 6px 4px; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 7px 8px 7px 12px; border-radius: 8px; }
+  .row:hover, .row.sel { background: var(--bg2); }
+  .row .ic { width: 22px; height: 22px; border-radius: 6px; background: var(--bg3); color: var(--accent); flex: none;
+    display: grid; place-items: center; font-size: 11px; font-weight: 700; text-transform: uppercase; }
+  .row a { flex: 1; min-width: 0; color: var(--fg); text-decoration: none; display: flex; align-items: baseline; gap: 10px; }
+  .row a .tt { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  .row a .host { color: var(--muted); font-size: 12px; white-space: nowrap; flex: none; }
+  .row .acts { display: flex; gap: 2px; opacity: 0; }
+  .row:hover .acts, .row.sel .acts { opacity: 1; }
+  .edit { display: flex; gap: 8px; padding: 8px; background: var(--bg2); border-radius: 8px; margin: 2px 0; }
+  .edit input { flex: 1; min-width: 0; background: var(--bg); color: var(--fg); border: 1px solid var(--bg3); border-radius: 6px; padding: 6px 8px; font: inherit; }
+  .edit input.f { flex: 0 0 160px; }
+  .edit button { background: var(--accent); color: #1b1d20; border: 0; border-radius: 6px; padding: 0 12px; font: inherit; font-weight: 600; }
+  .empty { color: var(--muted); padding: 40px 12px; text-align: center; }
+  .undo { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: #3b4148; color: #fff; padding: 10px 16px;
+    border-radius: 10px; display: none; gap: 14px; align-items: center; box-shadow: 0 4px 18px #0008; }
+  .undo.show { display: flex; }
+  .undo button { all: unset; color: var(--accent); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <form class="search" id="form">
+    <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>
+    <input id="q" autofocus spellcheck="false" autocomplete="off" placeholder="Search the web, or filter bookmarks">
+  </form>
+  <div class="hint">Enter searches the web or opens an address. ↓ moves into your bookmarks. Ctrl+click opens a background tab.</div>
+
+  <div class="head">
+    <h1 id="count">Bookmarks</h1>
+    <button id="importBtn" title="Import an HTML bookmarks file exported from Firefox, Chrome or Brave">Import</button>
+    <button id="exportBtn" title="Export as an HTML bookmarks file other browsers can import">Export</button>
+    <input type="file" id="file" accept=".html,.htm" hidden>
+  </div>
+  <div id="list"></div>
+</main>
+<div class="undo" id="undo"><span id="undoText"></span><button id="undoBtn">Undo</button></div>
+
+<script>
+(function () {
+  var post = function (o) { window.ipc.postMessage(JSON.stringify(o)); };
+  var $ = function (id) { return document.getElementById(id); };
+  var all = [], editing = null, sel = -1, lastDeleted = null, undoTimer = null;
+
+  function esc(s) { return String(s || '').replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+  function host(u) { try { return new URL(u).hostname.replace(/^www\./, ''); } catch (e) { return ''; } }
+
+  function filtered() {
+    var q = $('q').value.trim().toLowerCase();
+    if (!q) return all.slice();
+    return all.filter(function (b) {
+      return (b.title + ' ' + b.url + ' ' + b.folder).toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
+  function render() {
+    var items = filtered();
+    $('count').textContent = all.length ? 'Bookmarks · ' + all.length : 'Bookmarks';
+    if (!all.length) {
+      $('list').innerHTML = '<div class="empty">No bookmarks yet. Press Ctrl+D or the star on any page, or import from another browser.</div>';
+      return;
+    }
+    if (!items.length) { $('list').innerHTML = '<div class="empty">No bookmarks match. Press Enter to search the web.</div>'; return; }
+
+    var groups = {};
+    items.forEach(function (b) { (groups[b.folder || ''] = groups[b.folder || ''] || []).push(b); });
+    var names = Object.keys(groups).sort(function (a, b) { return a === '' ? -1 : b === '' ? 1 : a.localeCompare(b); });
+    var html = '', idx = 0;
+    names.forEach(function (name) {
+      if (name || names.length > 1) html += '<h2>' + esc(name || 'Unsorted') + '</h2>';
+      groups[name].sort(function (a, b) { return b.added - a.added; }).forEach(function (b) {
+        if (editing === b.id) {
+          html += '<form class="edit" data-id="' + b.id + '"><input class="t" value="' + esc(b.title) + '" placeholder="Title">' +
+            '<input class="f" list="folders" value="' + esc(b.folder) + '" placeholder="Folder"><button>Save</button></form>';
+        } else {
+          var h = host(b.url);
+          html += '<div class="row' + (idx === sel ? ' sel' : '') + '" data-i="' + idx + '" data-id="' + b.id + '">' +
+            '<span class="ic">' + esc((h || '?').charAt(0)) + '</span>' +
+            '<a href="' + esc(b.url) + '" title="' + esc(b.url) + '"><span class="tt">' + esc(b.title) + '</span><span class="host">' + esc(h) + '</span></a>' +
+            '<span class="acts"><button data-edit="' + b.id + '">Edit</button><button data-del="' + b.id + '">Delete</button></span></div>';
+        }
+        idx++;
+      });
+    });
+    var folders = {};
+    all.forEach(function (b) { if (b.folder) folders[b.folder] = 1; });
+    html += '<datalist id="folders">' + Object.keys(folders).map(function (f) { return '<option value="' + esc(f) + '">'; }).join('') + '</datalist>';
+    $('list').innerHTML = html;
+    var f = document.querySelector('.edit .t');
+    if (f) { f.focus(); f.select(); }
+  }
+
+  window.bm = { render: function (data) { all = data || []; render(); } };
+
+  $('q').addEventListener('input', function () { sel = -1; render(); });
+  $('form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var v = $('q').value.trim();
+    if (v) post({ evt: 'home-navigate', input: v });
+  });
+
+  document.addEventListener('keydown', function (e) {
+    var rows = document.querySelectorAll('.row');
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (!rows.length || document.activeElement.closest('.edit')) return;
+      e.preventDefault();
+      sel = Math.max(-1, Math.min(rows.length - 1, sel + (e.key === 'ArrowDown' ? 1 : -1)));
+      rows.forEach(function (r, i) { r.classList.toggle('sel', i === sel); });
+      if (sel === -1) $('q').focus();
+      else { $('q').blur(); rows[sel].scrollIntoView({ block: 'nearest' }); }
+    } else if (e.key === 'Enter' && sel >= 0 && document.activeElement !== $('q') && rows[sel]) {
+      e.preventDefault();
+      location.href = rows[sel].querySelector('a').href;
+    } else if (e.key === 'Escape' && editing) {
+      editing = null; render();
+    }
+  });
+
+  $('list').addEventListener('click', function (e) {
+    var ed = e.target.closest('[data-edit]'), del = e.target.closest('[data-del]');
+    if (ed) { editing = ed.dataset.edit; render(); }
+    if (del) {
+      var b = all.filter(function (x) { return x.id === del.dataset.del; })[0];
+      lastDeleted = b;
+      post({ evt: 'bm-delete', id: del.dataset.del });
+      $('undoText').textContent = 'Deleted “' + (b ? b.title : '') + '”';
+      $('undo').classList.add('show');
+      clearTimeout(undoTimer);
+      undoTimer = setTimeout(function () { $('undo').classList.remove('show'); }, 6000);
+    }
+  });
+  $('list').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var f = e.target;
+    post({ evt: 'bm-update', id: f.dataset.id, title: f.querySelector('.t').value, folder: f.querySelector('.f').value });
+    editing = null;
+  });
+  $('undoBtn').addEventListener('click', function () {
+    if (lastDeleted) post({ evt: 'bm-import', items: [lastDeleted] });
+    lastDeleted = null;
+    $('undo').classList.remove('show');
+  });
+
+  // ---- import: the Netscape bookmark format every browser exports ----
+  $('importBtn').addEventListener('click', function () { $('file').click(); });
+  $('file').addEventListener('change', function () {
+    var file = this.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var doc = new DOMParser().parseFromString(reader.result, 'text/html');
+      var items = [];
+      doc.querySelectorAll('a[href]').forEach(function (a) {
+        var path = [], node = a.parentElement;
+        while (node) {
+          if (node.tagName === 'DL') {
+            var dt = node.previousElementSibling;
+            if (!dt || dt.tagName !== 'H3') dt = node.parentElement && node.parentElement.querySelector(':scope > h3');
+            if (dt && dt.tagName === 'H3') path.unshift(dt.textContent.trim());
+          }
+          node = node.parentElement;
+        }
+        // Drop the toolbar/menu roots that every browser adds.
+        path = path.filter(function (p) { return !/^(bookmarks (bar|toolbar|menu)|other bookmarks|mobile bookmarks)$/i.test(p); });
+        items.push({ url: a.getAttribute('href'), title: a.textContent.trim(), folder: path.join(' / ') });
+      });
+      post({ evt: 'bm-import', items: items });
+    };
+    reader.readAsText(file);
+    this.value = '';
+  });
+
+  // ---- export ----
+  $('exportBtn').addEventListener('click', function () {
+    var groups = {};
+    all.forEach(function (b) { (groups[b.folder || ''] = groups[b.folder || ''] || []).push(b); });
+    var out = '<!DOCTYPE NETSCAPE-Bookmark-file-1>\n<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">\n<TITLE>Bookmarks</TITLE>\n<H1>Bookmarks</H1>\n<DL><p>\n';
+    Object.keys(groups).forEach(function (name) {
+      var line = function (b) { return '<DT><A HREF="' + esc(b.url) + '" ADD_DATE="' + b.added + '">' + esc(b.title) + '</A>\n'; };
+      if (name) out += '<DT><H3>' + esc(name) + '</H3>\n<DL><p>\n' + groups[name].map(line).join('') + '</DL><p>\n';
+      else out += groups[name].map(line).join('');
+    });
+    out += '</DL><p>\n';
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([out], { type: 'text/html' }));
+    a.download = 'squatchbrowse-bookmarks.html';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+
+  post({ evt: 'bm-list' });
+})();
+</script>
+</body>
+</html>

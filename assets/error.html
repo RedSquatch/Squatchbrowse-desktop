@@ -1,0 +1,67 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Connection warning</title>
+<style>
+  :root { --bg: #1b1d20; --bg2: #25282c; --bg3: #2f3338; --fg: #e4e1da; --muted: #8f8b84; --accent: #e0a85a; --bad: #d0706a; }
+  html { background: var(--bg); color: var(--fg); font: 15px/1.55 system-ui, "Inter", "DejaVu Sans", sans-serif; }
+  body { margin: 0; padding: 12vh 24px; }
+  main { max-width: 560px; margin: 0 auto; }
+  .icon { width: 44px; height: 44px; stroke: var(--accent); fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .icon.bad { stroke: var(--bad); }
+  h1 { font-size: 22px; margin: 18px 0 10px; }
+  p { color: #c9c5bd; margin: 0 0 14px; }
+  code { background: var(--bg2); padding: 2px 6px; border-radius: 5px; word-break: break-all; color: var(--fg); }
+  .btns { display: flex; gap: 10px; margin-top: 26px; flex-wrap: wrap; }
+  button { font: inherit; border-radius: 8px; padding: 9px 16px; border: 1px solid var(--bg3); background: var(--bg2); color: var(--fg); cursor: default; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #1b1d20; font-weight: 600; }
+  button:hover { filter: brightness(1.1); }
+  .small { font-size: 13px; color: var(--muted); margin-top: 28px; }
+</style>
+</head>
+<body>
+<main id="main"></main>
+<script>
+(function () {
+  var q = new URLSearchParams(location.search);
+  var kind = q.get('kind') || '', url = q.get('url') || '', local = q.get('local') === '1';
+  var host = ''; try { host = new URL(url).host; } catch (e) {}
+  var post = function (o) { window.ipc.postMessage(JSON.stringify(o)); };
+  var esc = function (s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var lockOpen = '<svg class="icon" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>';
+  var shield = '<svg class="icon bad" viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M12 8v5M12 16v.5"/></svg>';
+  var html = '';
+
+  if (kind === 'insecure') {
+    html = lockOpen +
+      '<h1>This site doesn\'t offer a secure connection</h1>' +
+      '<p><code>' + esc(host) + '</code> couldn\'t be reached over HTTPS. If you continue, anything you see or type there travels unencrypted, so other people on the network could read or change it.</p>' +
+      '<p>That\'s usually fine for reading a story. Don\'t enter passwords or payment details.</p>' +
+      '<div class="btns"><button class="primary" id="back">Go back</button><button id="go">Continue without encryption</button></div>' +
+      '<p class="small">Your choice applies to ' + esc(host) + ' until you close the browser.</p>';
+  } else if (kind === 'cert' && local) {
+    html = shield +
+      '<h1>This device\'s certificate isn\'t trusted</h1>' +
+      '<p><code>' + esc(host) + '</code> is on your home network and is using a certificate no public authority vouches for. That\'s normal for a NAS, router or home server with a self-signed certificate.</p>' +
+      '<p>Only trust it if you know this device and expected to reach it.</p>' +
+      '<div class="btns"><button class="primary" id="back">Go back</button><button id="trust">Trust this certificate</button></div>' +
+      '<p class="small">Trust lasts until you close the browser.</p>';
+  } else if (kind === 'cert') {
+    html = shield +
+      '<h1>Connection blocked: certificate problem</h1>' +
+      '<p>The certificate presented by <code>' + esc(host) + '</code> isn\'t valid. It may be expired or misconfigured, or someone may be intercepting the connection.</p>' +
+      '<p>SquatchBrowse doesn\'t let you bypass this on public sites. If it\'s a site you rely on, try again later or from another network.</p>' +
+      '<div class="btns"><button class="primary" id="back">Go back</button></div>';
+  } else {
+    html = '<h1>Page not found</h1>';
+  }
+  document.getElementById('main').innerHTML = html;
+  var b = document.getElementById('back'), g = document.getElementById('go'), t = document.getElementById('trust');
+  if (b) b.onclick = function () { history.length > 1 ? history.back() : post({ evt: 'key', key: 'home' }); };
+  if (g) g.onclick = function () { post({ evt: 'allow-http', url: url }); };
+  if (t) t.onclick = function () { post({ evt: 'trust-cert', url: url }); };
+})();
+</script>
+</body>
+</html>
