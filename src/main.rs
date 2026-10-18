@@ -89,6 +89,8 @@ pub enum UserEvent {
     FilterLoaded(Result<String, String>),
     Toast(String),
     VideoDone(String),
+    /// The page didn't answer a Save request in time (request number): save from the page address alone.
+    SaveFallback(u64),
 }
 
 struct Tab {
@@ -147,6 +149,9 @@ struct App {
     /// Hosts the user chose to visit without encryption (this run only).
     http_allowed: HashSet<String>,
     video_busy: bool,
+    /// A Save chosen in the toolbar that's waiting for the page's video list: (request number, mode, page address).
+    save_wait: Option<(u64, String, String)>,
+    save_seq: u64,
 
     #[cfg(target_os = "linux")]
     store: FilterStore,
@@ -223,6 +228,8 @@ fn main() -> anyhow::Result<()> {
         js_enabled: true,
         http_allowed: HashSet::new(),
         video_busy: false,
+        save_wait: None,
+        save_seq: 0,
         #[cfg(target_os = "linux")]
         store: FilterStore::new(&Paths::new(&data_dir, &config::config_dir()).store_dir),
         #[cfg(target_os = "linux")]
@@ -939,6 +946,11 @@ impl App {
                 self.video_busy = false;
                 self.toast(&msg);
             }
+            UserEvent::SaveFallback(n) => {
+                if let Some((seq, mode, page)) = self.save_wait.take() {
+                    if seq == n { self.start_save(page.clone(), vec![page], &mode); } else { self.save_wait = Some((seq, mode, page)); }
+                }
+            }
         }
     }
 
@@ -948,6 +960,26 @@ impl App {
         }
         let host = host_of(url);
         !config::is_local_host(&host) && !self.http_allowed.contains(&host)
+    }
+
+    fn start_save(&mut self, page: String, candidates: Vec<String>, mode: &str) {
+        if self.video_busy {
+            self.toast("Already saving a video, one at a time");
+            return;
+        }
+        self.video_busy = true;
+        let mode = video::Mode::parse(mode);
+        let p = self.proxy.clone();
+        let dir = if mode.is_audio() { self.cfg.audio_dir() } else { self.cfg.video_dir() };
+        let ytdlp = self.cfg.ytdlp_path.clone();
+        self.toast(if mode.is_audio() { "Saving audio…" } else { "Saving video…" });
+        std::thread::spawn(move || {
+            let say = |m: &str| {
+                let _ = p.send_event(UserEvent::Toast(m.to_string()));
+            };
+            let msg = video::save(&ytdlp, &dir, &page, &candidates, mode, &say);
+            let _ = p.send_event(UserEvent::VideoDone(msg));
+        });
     }
 
     fn eval_active(&self, js: &str) {
@@ -1059,6 +1091,24 @@ impl App {
             "unstick" => self.eval_active("window.__squatch&&__squatch.unstick()"),
             "zap" => self.eval_active("window.__squatch&&__squatch.zap()"),
             "video" => self.eval_active("window.__squatch&&__squatch.saveMenu()"),
+            // The toolbar's own Save chooser: ask the page for its videos, and if it doesn't answer
+            // (a site's rules blocking our page script, say), save from the address alone.
+            "save" => {
+                let mode = match v["mode"].as_str().unwrap_or("mp4") { m @ ("mp4" | "best" | "audio" | "mp3") => m.to_string(), _ => "mp4".into() };
+                let page = self.active_tab().map(|t| t.url.clone()).unwrap_or_default();
+                if !page.starts_with("http") { self.toast("Open a page with a video first"); return; }
+                self.save_seq += 1;
+                let n = self.save_seq;
+                self.save_wait = Some((n, mode.clone(), page));
+                self.eval_active(&format!(
+                    "(function(){{var m='{mode}';try{{if(window.__squatch&&__squatch.videos){{__squatch.videos(m);return}}}}catch(e){{}}try{{window.ipc.postMessage(JSON.stringify({{evt:'videos',mode:m,page:location.href,list:[]}}))}}catch(e){{}}}})()"
+                ));
+                let p = self.proxy.clone();
+                std::thread::spawn(move || {
+                    std::thread::sleep(std::time::Duration::from_millis(2500));
+                    let _ = p.send_event(UserEvent::SaveFallback(n));
+                });
+            }
             "devtools" => { if let Some(t) = self.active_tab() { t.view.open_devtools(); } }
             "open-popup" => {
                 if let Some(url) = v["url"].as_str() {
@@ -1180,29 +1230,15 @@ impl App {
                 }
             }
             "videos" => {
-                if self.video_busy {
-                    self.toast("Already saving a video, one at a time");
-                    return;
-                }
-                self.video_busy = true;
-                let page = origin.to_string();
+                self.save_wait = None;   // the page answered
+                let page = v["page"].as_str().filter(|x| x.starts_with("http")).map(String::from).unwrap_or_else(|| origin.to_string());
                 let mut candidates = vec![page.clone()];
                 if let Some(list) = v["list"].as_array() {
                     candidates.extend(list.iter().filter_map(|x| x.as_str().map(String::from)));
                 }
                 candidates.dedup();
-                let mode = video::Mode::parse(v["mode"].as_str().unwrap_or(""));
-                let p = self.proxy.clone();
-                let dir = if mode.is_audio() { self.cfg.audio_dir() } else { self.cfg.video_dir() };
-                let ytdlp = self.cfg.ytdlp_path.clone();
-                self.toast(if mode.is_audio() { "Saving audio…" } else { "Saving video…" });
-                std::thread::spawn(move || {
-                    let say = |m: &str| {
-                        let _ = p.send_event(UserEvent::Toast(m.to_string()));
-                    };
-                    let msg = video::save(&ytdlp, &dir, &page, &candidates, mode, &say);
-                    let _ = p.send_event(UserEvent::VideoDone(msg));
-                });
+                let mode = v["mode"].as_str().unwrap_or("").to_string();
+                self.start_save(page, candidates, &mode);
             }
             // ---- bookmarks page (squatch://home only) ----
             "bm-list" if trusted => self.send_bookmarks(id),

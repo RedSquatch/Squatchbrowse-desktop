@@ -44,6 +44,12 @@
   .chip.show { display: inline-flex; }
   .chip button { height: 22px; padding: 0 6px; border-radius: 11px; color: var(--accent); }
 
+  .savepick { position: fixed; left: 0; right: 0; top: 0; height: 46px; display: none; align-items: center; justify-content: flex-end; gap: 6px; padding: 0 10px;
+    background: #1b1d20f2; border-bottom: 1px solid #000; z-index: 5; }
+  .savepick.show { display: flex; }
+  .savepick button:not(.icon) { background: var(--bg2); }
+  .savepick button:not(.icon):hover { background: var(--bg3); color: var(--accent); }
+  .savepick .label { color: var(--muted); margin-right: 4px; }
   .toast { position: fixed; right: 10px; top: 8px; height: 30px; max-width: 60%; display: flex; align-items: center;
     padding: 0 14px; border-radius: 8px; background: #3b4148; color: #fff; box-shadow: 0 2px 12px #0008;
     opacity: 0; transform: translateY(-6px); transition: opacity .18s, transform .18s; pointer-events: none;
@@ -114,7 +120,7 @@
     <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg><span class="label">Unstick</span></button>
   <button data-cmd="zap" title="Zap: click any element to remove it (Shift+click = remove on every visit, Esc = done)">
     <svg viewBox="0 0 24 24"><path d="M13 3L5 13h6l-1 8 8-10h-6z"/></svg><span class="label">Zap</span></button>
-  <button data-cmd="video" id="videoBtn" title="Save video or audio from this page (MP4, 4K, audio, MP3)">
+  <button id="videoBtn" title="Save video or audio from this page (MP4, 4K, audio, MP3)">
     <svg viewBox="0 0 24 24"><path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M5 20h14"/></svg><span class="label">Save</span><span class="count" id="vcount"></span></button>
 
   <div class="sep"></div>
@@ -127,6 +133,15 @@
   <button class="icon" data-cmd="devtools" title="Developer tools (F12)"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-.5-.5-2.5z"/></svg></button>
 </div>
 <div class="toast" id="toast"></div>
+<div class="savepick" id="savepick" role="menu" aria-label="Save from this page">
+  <span class="label">Save:</span>
+  <button data-mode="mp4" title="Plays everywhere">Video · 1080p MP4</button>
+  <button data-mode="best" title="Best quality, WebM or MKV">Video · up to 4K</button>
+  <span class="sep"></span>
+  <button data-mode="audio" title="Original stream, no re-encoding">Audio · best</button>
+  <button data-mode="mp3" title="With title and cover art">Audio · MP3 320</button>
+  <button class="icon" id="saveCancel" title="Cancel">✕</button>
+</div>
 
 <script>
   const post = (o) => window.ipc.postMessage(JSON.stringify(o));
@@ -136,6 +151,12 @@
 
   document.querySelectorAll('[data-cmd]').forEach((b) =>
     b.addEventListener('click', () => post({ cmd: b.dataset.cmd })));
+
+  const pick = $('savepick');
+  $('videoBtn').addEventListener('click', () => pick.classList.toggle('show'));
+  $('saveCancel').addEventListener('click', () => pick.classList.remove('show'));
+  pick.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => { pick.classList.remove('show'); post({ cmd: 'save', mode: b.dataset.mode }); }));
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') pick.classList.remove('show'); });
 
   box.addEventListener('submit', (e) => { e.preventDefault(); editing = false; post({ cmd: 'navigate', input: url.value }); url.blur(); });
   url.addEventListener('focus', () => { editing = true; setTimeout(() => url.select(), 0); });
