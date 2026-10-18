@@ -130,16 +130,13 @@
   <button class="icon" data-cmd="open-videos" title="Open saved videos folder"><svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></button>
   <button class="icon" data-cmd="edit-filters" title="Edit my filters"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></button>
   <button class="icon" data-cmd="update-lists" title="Update filter lists now"><svg viewBox="0 0 24 24"><path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z"/><path d="M9 12l2 2 4-4"/></svg></button>
+  <button class="icon" data-cmd="settings" title="Settings: save folders, Save choices, theme, search, blocking"><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
   <button class="icon" data-cmd="devtools" title="Developer tools (F12)"><svg viewBox="0 0 24 24"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-.5-.5-2.5z"/></svg></button>
 </div>
 <div class="toast" id="toast"></div>
 <div class="savepick" id="savepick" role="menu" aria-label="Save from this page">
-  <span class="label">Save:</span>
-  <button data-mode="mp4" title="Plays everywhere">Video · 1080p MP4</button>
-  <button data-mode="best" title="Best quality, WebM or MKV">Video · up to 4K</button>
-  <span class="sep"></span>
-  <button data-mode="audio" title="Original stream, no re-encoding">Audio · best</button>
-  <button data-mode="mp3" title="With title and cover art">Audio · MP3 320</button>
+  <span class="label">Save:</span><span id="saveOpts" style="display:flex;gap:6px"></span>
+  <button class="icon" id="saveMore" title="Change these choices and where files go"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
   <button class="icon" id="saveCancel" title="Cancel">✕</button>
 </div>
 
@@ -155,7 +152,15 @@
   const pick = $('savepick');
   $('videoBtn').addEventListener('click', () => pick.classList.toggle('show'));
   $('saveCancel').addEventListener('click', () => pick.classList.remove('show'));
-  pick.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => { pick.classList.remove('show'); post({ cmd: 'save', mode: b.dataset.mode }); }));
+  $('saveMore').addEventListener('click', () => { pick.classList.remove('show'); post({ cmd: 'settings' }); });
+  const renderSaveModes = (modes) => {
+    $('saveOpts').replaceChildren(...modes.map((m) => {
+      const b = document.createElement('button'); b.textContent = m.label; b.title = m.hint;
+      b.addEventListener('click', () => { pick.classList.remove('show'); post({ cmd: 'save', mode: m.id }); });
+      return b;
+    }));
+  };
+  renderSaveModes([{ id: 'mp4', label: 'Video · 1080p MP4', hint: '' }, { id: 'mp4-720', label: 'Video · 720p MP4', hint: '' }, { id: 'mp4-480', label: 'Video · 480p MP4', hint: '' }, { id: 'best', label: 'Video · up to 4K', hint: '' }, { id: 'audio', label: 'Audio · best', hint: '' }, { id: 'mp3', label: 'Audio · MP3 320', hint: '' }]);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') pick.classList.remove('show'); });
 
   box.addEventListener('submit', (e) => { e.preventDefault(); editing = false; post({ cmd: 'navigate', input: url.value }); url.blur(); });
@@ -256,6 +261,8 @@
         b.innerHTML = s.https ? LOCK : OPEN;
         b.title = s.https ? 'HTTPS-only is ON. Click to allow plain http sites' : 'HTTPS-only is OFF. Click to upgrade http links and warn before unencrypted sites';
       }
+      if ('saveModes' in s) renderSaveModes(s.saveModes);
+      if ('themeCss' in s) { let st = $('themeCss'); if (!st) { st = document.createElement('style'); st.id = 'themeCss'; document.head.appendChild(st); } st.textContent = s.themeCss; }
       if ('popup' in s) { popupUrl = s.popup; $('popup').title = s.popup; $('popup').classList.add('show'); }
       if ('focusUrl' in s) url.focus();
       if ('toast' in s && s.toast) {

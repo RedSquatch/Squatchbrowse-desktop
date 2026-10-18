@@ -38,6 +38,7 @@
     border-radius: 10px; display: none; gap: 14px; align-items: center; box-shadow: 0 4px 18px #0008; }
   .undo.show { display: flex; }
   .undo button { all: unset; color: var(--accent); font-weight: 600; }
+  /*THEME*/
 </style>
 </head>
 <body>
@@ -59,6 +60,7 @@
 <div class="undo" id="undo"><span id="undoText"></span><button id="undoBtn">Undo</button></div>
 
 <script>
+  window.bmTheme = (css) => { let s = document.getElementById('theme-css'); if (!s) { s = document.createElement('style'); s.id = 'theme-css'; document.head.appendChild(s); } s.textContent = css; };
 (function () {
   var post = function (o) { window.ipc.postMessage(JSON.stringify(o)); };
   var $ = function (id) { return document.getElementById(id); };

@@ -15,6 +15,7 @@ mod config;
 #[cfg(target_os = "linux")]
 mod content_filter;
 mod filters;
+mod themes;
 mod tools;
 mod video;
 #[cfg(windows)]
@@ -53,6 +54,12 @@ use {
 const TOOLBAR_HTML: &str = include_str!("../assets/toolbar.html");
 const HOME_HTML: &str = include_str!("../assets/home.html");
 const ERROR_HTML: &str = include_str!("../assets/error.html");
+const SETTINGS_HTML: &str = include_str!("../assets/settings.html");
+const SETTINGS_URL: &str = "squatch://settings";
+
+/// The theme our own pages are served with (kept in step with the config by the app).
+static PAGE_THEME: std::sync::RwLock<String> = std::sync::RwLock::new(String::new());
+fn set_page_theme(id: &str) { if let Ok(mut t) = PAGE_THEME.write() { *t = id.to_string(); } }
 const PAGE_JS: &str = include_str!("../assets/page.js");
 const READABILITY_JS: &str = include_str!("../assets/Readability.js");
 #[cfg(target_os = "linux")]
@@ -91,6 +98,8 @@ pub enum UserEvent {
     VideoDone(String),
     /// The page didn't answer a Save request in time (request number): save from the page address alone.
     SaveFallback(u64),
+    /// A folder was chosen in Settings: (settings tab, setting name, folder).
+    FolderPicked(TabId, String, Option<String>),
 }
 
 struct Tab {
@@ -296,10 +305,16 @@ fn squatch_page(req: wry::http::Request<Vec<u8>>) -> Response<Cow<'static, [u8]>
     let page = req.uri().host().unwrap_or("home");
     // On Windows the host arrives as "squatch.home" style; take the last part.
     let page = page.rsplit('.').next().unwrap_or(page);
-    let body: Cow<'static, [u8]> = match page {
-        "home" | "bookmarks" | "newtab" => Cow::Borrowed(HOME_HTML.as_bytes()),
-        "error" => Cow::Borrowed(ERROR_HTML.as_bytes()),
-        _ => Cow::Borrowed(b"Not found".as_slice()),
+    let html = match page {
+        "home" | "bookmarks" | "newtab" => Some(HOME_HTML),
+        "error" => Some(ERROR_HTML),
+        "settings" => Some(SETTINGS_HTML),
+        _ => None,
+    };
+    let theme = PAGE_THEME.read().map(|t| t.clone()).unwrap_or_default();
+    let body: Cow<'static, [u8]> = match html {
+        Some(h) => Cow::Owned(h.replace("/*THEME*/", &themes::css(&theme)).into_bytes()),
+        None => Cow::Borrowed(b"Not found".as_slice()),
     };
     Response::builder()
         .header("Content-Type", "text/html; charset=utf-8")
@@ -946,6 +961,18 @@ impl App {
                 self.video_busy = false;
                 self.toast(&msg);
             }
+            UserEvent::FolderPicked(tab, key, path) => {
+                if let Some(p) = path {
+                    match key.as_str() {
+                        "audio_dir" => self.cfg.audio_dir = p,
+                        "video_dir" => self.cfg.video_dir = p,
+                        "downloads_dir" => self.cfg.downloads_dir = p,
+                        _ => {}
+                    }
+                    let _ = self.cfg.save();
+                    self.send_settings(tab, Some("Saved"));
+                }
+            }
             UserEvent::SaveFallback(n) => {
                 if let Some((seq, mode, page)) = self.save_wait.take() {
                     if seq == n { self.start_save(page.clone(), vec![page], &mode); } else { self.save_wait = Some((seq, mode, page)); }
@@ -960,6 +987,78 @@ impl App {
         }
         let host = host_of(url);
         !config::is_local_host(&host) && !self.http_allowed.contains(&host)
+    }
+
+    /// Theme and Save choices to the toolbar (and our own open pages).
+    fn push_look(&self) {
+        set_page_theme(&self.cfg.theme);
+        let css = themes::css(&self.cfg.theme);
+        let modes: Vec<Value> = self.cfg.save_modes.iter()
+            .filter_map(|id| config::SAVE_MODES.iter().find(|m| m.0 == id))
+            .map(|m| json!({ "id": m.0, "label": m.1, "hint": m.2 })).collect();
+        self.ui(json!({ "themeCss": css, "saveModes": modes, "light": self.cfg.theme == "paper" }));
+        let js = format!("window.st&&st.applyTheme({0});window.bmTheme&&bmTheme({0})", serde_json::to_string(&css).unwrap_or_default());
+        for t in self.tabs.iter().filter(|t| t.url.starts_with("squatch://")) { let _ = t.view.evaluate_script(&js); }
+    }
+
+    fn open_settings(&mut self) {
+        if let Some(id) = self.tabs.iter().find(|t| t.url.starts_with(SETTINGS_URL)).map(|t| t.id) {
+            self.activate(id);
+        } else {
+            let _ = self.new_tab(SETTINGS_URL, true, None);
+        }
+    }
+
+    fn send_settings(&self, id: TabId, toast: Option<&str>) {
+        let Some(t) = self.tab(id) else { return };
+        let c = &self.cfg;
+        let data = json!({
+            "cfg": {
+                "homepage": c.homepage, "search_url": c.search_url, "block_popups": c.block_popups, "https_only": c.https_only,
+                "restore_session": c.restore_session, "user_agent": c.user_agent, "list_max_age_days": c.list_max_age_days,
+                "filter_lists": c.filter_lists, "theme": c.theme, "save_modes": c.save_modes, "ytdlp_path": c.ytdlp_path,
+            },
+            "paths": {
+                "audio_dir": c.audio_dir().display().to_string(), "video_dir": c.video_dir().display().to_string(),
+                "downloads_dir": c.download_dir().display().to_string(),
+                "config": config::config_dir().join("config.toml").display().to_string(),
+            },
+            "themes": themes::THEMES.iter().map(|t| json!({ "id": t.0, "name": t.1, "c": t.2 })).collect::<Vec<_>>(),
+            "modes": config::SAVE_MODES.iter().map(|m| json!({ "id": m.0, "label": m.1, "hint": m.2 })).collect::<Vec<_>>(),
+            "toast": toast,
+        });
+        let _ = t.view.evaluate_script(&format!("window.st && st.render({data})"));
+    }
+
+    /// Apply one change from the Settings page. Returns a message worth showing, if any.
+    fn apply_setting(&mut self, key: &str, v: &Value) -> Option<&'static str> {
+        let s = v.as_str().map(|x| x.trim().to_string());
+        match key {
+            "theme" => { if let Some(t) = s.filter(|t| themes::THEMES.iter().any(|x| x.0 == t)) { self.cfg.theme = t; } None }
+            "save_modes" => {
+                let m: Vec<String> = v.as_array().map(|a| a.iter().filter_map(|x| x.as_str())
+                    .filter(|id| config::SAVE_MODES.iter().any(|m| m.0 == *id)).map(String::from).collect()).unwrap_or_default();
+                if !m.is_empty() { self.cfg.save_modes = m; }
+                None
+            }
+            "search_url" => { if let Some(u) = s.filter(|u| u.contains("{}") && u.starts_with("http")) { self.cfg.search_url = u; } None }
+            "homepage" => { if let Some(u) = s.filter(|u| u.starts_with("http") || u == HOME_URL) { self.cfg.homepage = u; } None }
+            "block_popups" => { self.cfg.block_popups = v.as_bool().unwrap_or(true); Some("Applies to tabs you open from now on") }
+            "restore_session" => { self.cfg.restore_session = v.as_bool().unwrap_or(true); None }
+            "https_only" => {
+                if v.as_bool().unwrap_or(true) != self.cfg.https_only { self.toolbar_cmd(&json!({ "cmd": "toggle-https" })); }
+                None
+            }
+            "filter_lists" => {
+                let l: Vec<String> = v.as_array().map(|a| a.iter().filter_map(|x| x.as_str()).filter(|x| x.starts_with("http")).map(String::from).collect()).unwrap_or_default();
+                if !l.is_empty() { self.cfg.filter_lists = l; }
+                Some("Press Update now to load the new lists")
+            }
+            "list_max_age_days" => { if let Some(n) = v.as_u64().filter(|n| (1..=60).contains(n)) { self.cfg.list_max_age_days = n; } None }
+            "user_agent" => { self.cfg.user_agent = s.filter(|x| !x.is_empty()); Some("Applies to tabs you open from now on") }
+            "ytdlp_path" => { if let Some(p) = s.filter(|x| !x.is_empty()) { self.cfg.ytdlp_path = p; } None }
+            _ => None,
+        }
     }
 
     fn start_save(&mut self, page: String, candidates: Vec<String>, mode: &str) {
@@ -1017,7 +1116,9 @@ impl App {
                 self.push_tabs();
                 self.push_active();
                 self.ui(json!({ "js": self.js_enabled, "https": self.cfg.https_only }));
+                self.push_look();
             }
+            "settings" => self.open_settings(),
             "toggle-https" => {
                 self.cfg.https_only = !self.cfg.https_only;
                 #[cfg(windows)]
@@ -1240,6 +1341,37 @@ impl App {
                 let mode = v["mode"].as_str().unwrap_or("").to_string();
                 self.start_save(page, candidates, &mode);
             }
+            // ---- settings page (squatch://settings only) ----
+            "settings-get" if trusted => self.send_settings(id, None),
+            "settings-set" if trusted => {
+                let key = v["key"].as_str().unwrap_or("").to_string();
+                let val = &v["value"];
+                let msg = self.apply_setting(&key, val);
+                let _ = self.cfg.save();
+                self.push_look();
+                self.send_settings(id, msg);
+            }
+            "pick-folder" if trusted => {
+                let key = v["key"].as_str().unwrap_or("").to_string();
+                let start = match key.as_str() { "audio_dir" => self.cfg.audio_dir(), "video_dir" => self.cfg.video_dir(), _ => self.cfg.download_dir() };
+                let p = self.proxy.clone();
+                std::thread::spawn(move || {
+                    let mut d = rfd::FileDialog::new().set_title("Choose a folder");
+                    if start.exists() { d = d.set_directory(&start); }
+                    let picked = d.pick_folder().map(|x| x.to_string_lossy().into_owned());
+                    let _ = p.send_event(UserEvent::FolderPicked(id, key, picked));
+                });
+            }
+            "open-folder" if trusted => {
+                let dir = match v["key"].as_str().unwrap_or("") { "audio_dir" => self.cfg.audio_dir(), "video_dir" => self.cfg.video_dir(), _ => self.cfg.download_dir() };
+                let _ = std::fs::create_dir_all(&dir);
+                open_path(&dir);
+            }
+            "settings-cmd" if trusted => match v["cmd"].as_str().unwrap_or("") {
+                c @ ("update-lists" | "edit-filters") => self.toolbar_cmd(&json!({ "cmd": c })),
+                "open-config" => open_path(&config::config_dir()),
+                _ => {}
+            },
             // ---- bookmarks page (squatch://home only) ----
             "bm-list" if trusted => self.send_bookmarks(id),
             "bm-update" if trusted => {

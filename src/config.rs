@@ -12,6 +12,16 @@ pub fn data_dir() -> PathBuf {
     dirs::data_dir().unwrap_or_else(|| PathBuf::from(".")).join("squatchbrowse")
 }
 
+/// Every Save choice: (id, label, hint). The Save strip shows the ones listed in `save_modes`.
+pub const SAVE_MODES: &[(&str, &str, &str)] = &[
+    ("mp4", "Video · 1080p MP4", "Plays everywhere"),
+    ("mp4-720", "Video · 720p MP4", "About half the size"),
+    ("mp4-480", "Video · 480p MP4", "Small, for phones"),
+    ("best", "Video · up to 4K", "Best quality, WebM or MKV"),
+    ("audio", "Audio · best", "Original stream, no re-encoding"),
+    ("mp3", "Audio · MP3 320", "With title and cover art"),
+];
+
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(default)]
 pub struct Config {
@@ -31,6 +41,10 @@ pub struct Config {
     pub user_agent: Option<String>,
     pub list_max_age_days: u64,
     pub filter_lists: Vec<String>,
+    /// Colour scheme for the toolbar and SquatchBrowse's own pages (see themes.rs).
+    pub theme: String,
+    /// Which choices the Save strip offers, in order.
+    pub save_modes: Vec<String>,
 }
 
 impl Default for Config {
@@ -53,6 +67,8 @@ impl Default for Config {
                 "https://secure.fanboy.co.nz/fanboy-annoyance.txt".into(),
                 "https://raw.githubusercontent.com/uBlockOrigin/uAssets/master/filters/filters.txt".into(),
             ],
+            theme: "midnight".into(),
+            save_modes: SAVE_MODES.iter().map(|m| m.0.to_string()).collect(),
         }
     }
 }

@@ -1,0 +1,209 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Settings</title>
+<style>
+  :root { --bg: #1b1d20; --bg2: #25282c; --bg3: #2f3338; --fg: #e4e1da; --muted: #8f8b84; --accent: #e0a85a; --line: #2a2d31; }
+  /*THEME*/
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html { background: var(--bg); color: var(--fg); font: 14px/1.45 system-ui, "Inter", "DejaVu Sans", sans-serif; }
+  body { margin: 0; }
+  main { max-width: 760px; margin: 0 auto; padding: 28px 20px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 18px; }
+  nav { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 18px; position: sticky; top: 0; background: var(--bg); padding: 8px 0; z-index: 2; }
+  nav a { color: var(--muted); text-decoration: none; padding: 5px 10px; border-radius: 7px; background: var(--bg2); font-size: 13px; }
+  nav a:hover { color: var(--fg); background: var(--bg3); }
+  section { background: var(--bg2); border-radius: 12px; padding: 6px 18px 14px; margin: 0 0 16px; }
+  h2 { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin: 14px 0 8px; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
+  .row:first-of-type { border-top: 0; }
+  .row .lbl { flex: 1; min-width: 0; }
+  .row .lbl b { display: block; font-weight: 600; }
+  .row .lbl span { color: var(--muted); font-size: 12.5px; }
+  .path { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; color: var(--fg); background: var(--bg); padding: 3px 7px; border-radius: 5px; overflow-wrap: anywhere; display: inline-block; margin-top: 3px; }
+  button, select, input[type=text], input[type=number], textarea { font: inherit; color: var(--fg); background: var(--bg3); border: 1px solid transparent; border-radius: 8px; padding: 6px 11px; }
+  button { cursor: default; white-space: nowrap; }
+  button:hover { border-color: var(--accent); }
+  button.accent { background: var(--accent); color: var(--bg); font-weight: 600; }
+  input[type=text], textarea { width: 100%; }
+  input[type=text]:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent); }
+  textarea { min-height: 110px; font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; resize: vertical; }
+  .switch { position: relative; width: 42px; height: 24px; flex: none; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .switch i { position: absolute; inset: 0; border-radius: 12px; background: var(--bg3); transition: background .15s; }
+  .switch i::after { content: ''; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--muted); transition: transform .15s, background .15s; }
+  .switch input:checked + i { background: var(--accent); }
+  .switch input:checked + i::after { transform: translateX(18px); background: var(--bg); }
+  .themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 8px 0 4px; }
+  .theme { border: 2px solid transparent; border-radius: 10px; padding: 0; overflow: hidden; text-align: left; background: none; }
+  .theme.on { border-color: var(--accent); }
+  .theme .pv { height: 58px; display: flex; flex-direction: column; }
+  .theme .pv .t { height: 18px; display: flex; gap: 4px; align-items: center; padding: 0 6px; }
+  .theme .pv .t i { width: 26px; height: 6px; border-radius: 3px; }
+  .theme .pv .b { flex: 1; display: flex; align-items: center; padding: 0 8px; gap: 6px; }
+  .theme .pv .b i { flex: 1; height: 12px; border-radius: 6px; }
+  .theme .pv .b u { width: 12px; height: 12px; border-radius: 50%; }
+  .theme .nm { display: block; padding: 6px 8px; font-size: 12.5px; background: var(--bg3); }
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; padding: 6px 0 2px; }
+  .modes label { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+  .modes label span { color: var(--muted); font-size: 12px; }
+  input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); }
+  .note { color: var(--muted); font-size: 12.5px; margin: 6px 0 0; }
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%) translateY(20px); background: var(--bg3); color: var(--fg); padding: 9px 16px; border-radius: 9px; opacity: 0; transition: opacity .2s, transform .2s; pointer-events: none; box-shadow: 0 6px 20px #0008; }
+  .toast.show { opacity: 1; transform: translateX(-50%); }
+  @media (max-width: 560px) { .modes { grid-template-columns: 1fr; } .row { flex-wrap: wrap; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Settings</h1>
+  <p class="sub">Changes save as you make them.</p>
+  <nav><a href="#saving">Saving</a><a href="#look">Look</a><a href="#browsing">Browsing</a><a href="#blocking">Ad blocking</a><a href="#advanced">Advanced</a></nav>
+
+  <section id="saving">
+    <h2>Saving video and audio</h2>
+    <div class="row"><div class="lbl"><b>Music and audio go to</b><span class="path" id="p-audio_dir"></span></div><button data-pick="audio_dir">Choose…</button><button data-open="audio_dir">Open</button></div>
+    <div class="row"><div class="lbl"><b>Videos go to</b><span class="path" id="p-video_dir"></span></div><button data-pick="video_dir">Choose…</button><button data-open="video_dir">Open</button></div>
+    <div class="row"><div class="lbl"><b>Other downloads go to</b><span class="path" id="p-downloads_dir"></span></div><button data-pick="downloads_dir">Choose…</button><button data-open="downloads_dir">Open</button></div>
+    <h2>Choices on the Save button</h2>
+    <div class="modes" id="modes"></div>
+    <p class="note">Each video choice picks the best quality up to that size; a video that only exists smaller is saved at its own size.</p>
+  </section>
+
+  <section id="look">
+    <h2>Theme</h2>
+    <div class="themes" id="themes"></div>
+    <p class="note">Colours the toolbar, the bookmarks page and these settings. Websites keep their own look.</p>
+  </section>
+
+  <section id="browsing">
+    <h2>Browsing</h2>
+    <div class="row"><div class="lbl"><b>Search with</b><span>Used when you type words instead of an address</span></div>
+      <select id="search"></select></div>
+    <div class="row" id="search-custom-row" hidden><div class="lbl"><b>Search address</b><span>Use {} where the search words go</span><input type="text" id="search_url" spellcheck="false"></div></div>
+    <div class="row"><div class="lbl"><b>Home page</b><span>Where Home and new windows open</span></div>
+      <select id="home"><option value="squatch://home">Bookmarks page</option><option value="custom">A web page…</option></select></div>
+    <div class="row" id="home-custom-row" hidden><div class="lbl"><b>Home page address</b><input type="text" id="homepage" spellcheck="false" placeholder="https://"></div></div>
+    <div class="row"><div class="lbl"><b>Reopen my tabs</b><span>Start where you left off</span></div><label class="switch"><input type="checkbox" data-bool="restore_session"><i></i></label></div>
+    <div class="row"><div class="lbl"><b>Block popups</b><span>Pages can't open new windows on their own (you can still open them from the toolbar)</span></div><label class="switch"><input type="checkbox" data-bool="block_popups"><i></i></label></div>
+    <div class="row"><div class="lbl"><b>HTTPS-only</b><span>Upgrade http links and warn before unencrypted sites</span></div><label class="switch"><input type="checkbox" data-bool="https_only"><i></i></label></div>
+  </section>
+
+  <section id="blocking">
+    <h2>Ad and tracker blocking</h2>
+    <div class="row"><div class="lbl"><b>Filter lists</b><span>One address per line, uBlock Origin / Adblock Plus format</span></div></div>
+    <textarea id="filter_lists" spellcheck="false"></textarea>
+    <div class="row"><div class="lbl"><b>Refresh the lists every</b></div><input type="number" id="list_max_age_days" min="1" max="60" style="width:80px"> <span>days</span></div>
+    <div class="row"><div class="lbl"><b>Update the lists now</b><span>Downloads them again and rebuilds the blocker</span></div><button id="update-lists">Update now</button></div>
+    <div class="row"><div class="lbl"><b>My own filters</b><span>Rules you add yourself, and what Zap remembered</span></div><button id="edit-filters">Edit</button></div>
+  </section>
+
+  <section id="advanced">
+    <h2>Advanced</h2>
+    <div class="row"><div class="lbl"><b>Browser identity (user agent)</b><span>Leave empty for the normal one</span><input type="text" id="user_agent" spellcheck="false"></div></div>
+    <div class="row"><div class="lbl"><b>yt-dlp</b><span>Leave as “yt-dlp” and SquatchBrowse keeps its own copy up to date</span><input type="text" id="ytdlp_path" spellcheck="false"></div></div>
+    <div class="row"><div class="lbl"><b>Settings file</b><span class="path" id="p-config"></span></div><button id="open-config">Show</button></div>
+    <p class="note">Browser identity applies to tabs you open after changing it.</p>
+  </section>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+  const post = (o) => window.ipc.postMessage(JSON.stringify(o));
+  const $ = (id) => document.getElementById(id);
+  const ENGINES = [
+    ['DuckDuckGo', 'https://duckduckgo.com/?q={}'],
+    ['Startpage', 'https://www.startpage.com/do/search?q={}'],
+    ['Brave Search', 'https://search.brave.com/search?q={}'],
+    ['Mojeek', 'https://www.mojeek.com/search?q={}'],
+    ['Kagi', 'https://kagi.com/search?q={}'],
+    ['Qwant', 'https://www.qwant.com/?q={}'],
+  ];
+  let cfg = {}, toastT = null;
+  const set = (key, value) => { cfg[key] = value; post({ evt: 'settings-set', key, value }); };
+  const toast = (m) => { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2200); };
+  const debounce = (fn, ms) => { let h; return (...a) => { clearTimeout(h); h = setTimeout(() => fn(...a), ms); }; };
+
+  window.st = {
+    render(d) {
+      cfg = d.cfg;
+      ['audio_dir', 'video_dir', 'downloads_dir'].forEach((k) => { $('p-' + k).textContent = d.paths[k]; });
+      $('p-config').textContent = d.paths.config;
+      // save choices
+      const on = new Set(cfg.save_modes);
+      $('modes').replaceChildren(...d.modes.map((m) => {
+        const l = document.createElement('label');
+        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = on.has(m.id); cb.dataset.mode = m.id;
+        const t = document.createElement('div'); const b = document.createElement('b'); b.textContent = m.label; const s = document.createElement('span'); s.textContent = ' ' + m.hint;
+        t.append(b, s); l.append(cb, t); return l;
+      }));
+      $('modes').onchange = () => {
+        const picked = d.modes.map((m) => m.id).filter((id) => $('modes').querySelector('[data-mode="' + id + '"]').checked);
+        if (!picked.length) { toast('Keep at least one choice'); st.render(Object.assign(d, { cfg })); return; }
+        set('save_modes', picked);
+      };
+      // themes
+      $('themes').replaceChildren(...d.themes.map((t) => {
+        const b = document.createElement('button'); b.className = 'theme' + (t.id === cfg.theme ? ' on' : ''); b.title = t.name;
+        const c = t.c, pv = document.createElement('span'); pv.className = 'pv';
+        const top = document.createElement('span'); top.className = 't'; top.style.background = c[0];
+        for (let i = 0; i < 3; i++) { const x = document.createElement('i'); x.style.background = i === 0 ? c[1] : c[2]; top.appendChild(x); }
+        const body = document.createElement('span'); body.className = 'b'; body.style.background = c[1];
+        const bar = document.createElement('i'); bar.style.background = c[2]; const dot = document.createElement('u'); dot.style.background = c[5];
+        body.append(bar, dot); pv.append(top, body);
+        const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = t.name; nm.style.background = c[2]; nm.style.color = c[3];
+        b.append(pv, nm);
+        b.onclick = () => { set('theme', t.id); };
+        return b;
+      }));
+      // browsing
+      const eng = ENGINES.find((e) => e[1] === cfg.search_url);
+      $('search').replaceChildren(...ENGINES.map((e) => new Option(e[0], e[1])), new Option('Other…', 'custom'));
+      $('search').value = eng ? eng[1] : 'custom';
+      $('search-custom-row').hidden = !!eng;
+      $('search_url').value = cfg.search_url;
+      const homeBm = cfg.homepage === 'squatch://home';
+      $('home').value = homeBm ? 'squatch://home' : 'custom';
+      $('home-custom-row').hidden = homeBm;
+      $('homepage').value = homeBm ? '' : cfg.homepage;
+      document.querySelectorAll('[data-bool]').forEach((cb) => { cb.checked = !!cfg[cb.dataset.bool]; });
+      $('filter_lists').value = (cfg.filter_lists || []).join('\n');
+      $('list_max_age_days').value = cfg.list_max_age_days;
+      $('user_agent').value = cfg.user_agent || '';
+      $('ytdlp_path').value = cfg.ytdlp_path;
+      if (d.toast) toast(d.toast);
+    },
+    applyTheme(css) { let s = $('theme-css'); if (!s) { s = document.createElement('style'); s.id = 'theme-css'; document.head.appendChild(s); } s.textContent = css; },
+  };
+
+  document.querySelectorAll('[data-pick]').forEach((b) => b.onclick = () => post({ evt: 'pick-folder', key: b.dataset.pick }));
+  document.querySelectorAll('[data-open]').forEach((b) => b.onclick = () => post({ evt: 'open-folder', key: b.dataset.open }));
+  document.querySelectorAll('[data-bool]').forEach((cb) => cb.onchange = () => set(cb.dataset.bool, cb.checked));
+  $('search').onchange = () => {
+    const v = $('search').value;
+    $('search-custom-row').hidden = v !== 'custom';
+    if (v === 'custom') { $('search_url').focus(); return; }
+    set('search_url', v); toast('Searching with ' + $('search').selectedOptions[0].text);
+  };
+  $('search_url').oninput = debounce(() => { const v = $('search_url').value.trim(); if (v.indexOf('{}') >= 0) set('search_url', v); }, 600);
+  $('home').onchange = () => {
+    const v = $('home').value;
+    $('home-custom-row').hidden = v !== 'custom';
+    if (v === 'custom') { $('homepage').focus(); return; }
+    set('homepage', v);
+  };
+  $('homepage').oninput = debounce(() => { const v = $('homepage').value.trim(); if (/^https?:\/\/./.test(v)) set('homepage', v); }, 700);
+  $('filter_lists').oninput = debounce(() => set('filter_lists', $('filter_lists').value.split('\n').map((x) => x.trim()).filter(Boolean)), 900);
+  $('list_max_age_days').oninput = debounce(() => { const n = parseInt($('list_max_age_days').value, 10); if (n >= 1 && n <= 60) set('list_max_age_days', n); }, 600);
+  $('user_agent').oninput = debounce(() => set('user_agent', $('user_agent').value.trim()), 800);
+  $('ytdlp_path').oninput = debounce(() => { const v = $('ytdlp_path').value.trim(); if (v) set('ytdlp_path', v); }, 800);
+  $('update-lists').onclick = () => post({ evt: 'settings-cmd', cmd: 'update-lists' });
+  $('edit-filters').onclick = () => post({ evt: 'settings-cmd', cmd: 'edit-filters' });
+  $('open-config').onclick = () => post({ evt: 'settings-cmd', cmd: 'open-config' });
+  if (location.hash) setTimeout(() => { const el = document.querySelector(location.hash); if (el) el.scrollIntoView(); }, 50);
+  post({ evt: 'settings-get' });
+</script>
+</body>
+</html>

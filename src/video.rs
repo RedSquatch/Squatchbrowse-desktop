@@ -11,6 +11,10 @@ use std::path::Path;
 pub enum Mode {
     /// MP4 (H.264 + AAC) up to 1080p: plays on everything.
     Mp4_1080,
+    /// Same, up to 720p: about half the size.
+    Mp4_720,
+    /// Same, up to 480p: small files for phones and slow connections.
+    Mp4_480,
     /// Best available quality up to 4K, usually WebM or MKV (VP9/AV1 + Opus).
     Best4k,
     /// The original audio stream, untouched (Opus or M4A, whichever the site has best).
@@ -23,6 +27,8 @@ impl Mode {
     pub fn parse(s: &str) -> Mode {
         match s {
             "best" => Mode::Best4k,
+            "mp4-720" => Mode::Mp4_720,
+            "mp4-480" => Mode::Mp4_480,
             "audio" => Mode::AudioBest,
             "mp3" => Mode::Mp3,
             _ => Mode::Mp4_1080,
@@ -45,6 +51,16 @@ impl Mode {
                 "--recode-video", "mp4",
                 "--embed-metadata",
             ],
+            Mode::Mp4_720 => vec![
+                "-f", "bv*[height<=720]+ba/b[height<=720]/b",
+                "-S", "res:720,vcodec:h264,acodec:aac,ext:mp4:m4a",
+                "--merge-output-format", "mp4", "--recode-video", "mp4", "--embed-metadata",
+            ],
+            Mode::Mp4_480 => vec![
+                "-f", "bv*[height<=480]+ba/b[height<=480]/b",
+                "-S", "res:480,vcodec:h264,acodec:aac,ext:mp4:m4a",
+                "--merge-output-format", "mp4", "--recode-video", "mp4", "--embed-metadata",
+            ],
             Mode::Best4k => vec![
                 "-f", "bv*[height<=2160]+ba/b",
                 "-S", "res:2160",
@@ -62,7 +78,7 @@ impl Mode {
 
     fn label(self) -> &'static str {
         match self {
-            Mode::Mp4_1080 => "video",
+            Mode::Mp4_1080 | Mode::Mp4_720 | Mode::Mp4_480 => "video",
             Mode::Best4k => "video",
             Mode::AudioBest | Mode::Mp3 => "audio",
         }

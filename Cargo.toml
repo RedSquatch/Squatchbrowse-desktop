@@ -14,6 +14,7 @@ serde_json = "1.0.154"
 tao = "0.37.1"
 toml = "1.1.8"
 ureq = "3.4.2"
+rfd = "0.15"
 zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 wry = { version = "0.57.0", features = ["devtools"] }
 
