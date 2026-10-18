@@ -80,9 +80,12 @@ pub fn save(ytdlp: &str, dir: &Path, page: &str, candidates: &[String], mode: Mo
         Ok(d) => d,
         Err(e) => return e,
     };
+    // YouTube needs a JavaScript runtime now; yt-dlp finds Deno on its PATH.
+    let deno_dir = tools::deno(say);
     if let Err(e) = std::fs::create_dir_all(dir) {
         return format!("Can't create {}: {e}", dir.display());
     }
+    let mut log = String::new();
     let template = dir.join("%(title).120B [%(id)s].%(ext)s");
 
     let mut last_err = String::new();
@@ -93,6 +96,11 @@ pub fn save(ytdlp: &str, dir: &Path, page: &str, candidates: &[String], mode: Mo
         let mut cmd = tools::command(&ytdlp);
         if let Some(d) = &ffmpeg_dir {
             cmd.arg("--ffmpeg-location").arg(d);
+        }
+        if let Some(d) = &deno_dir {
+            let mut paths = vec![d.clone()];
+            if let Some(p) = std::env::var_os("PATH") { paths.extend(std::env::split_paths(&p)); }
+            if let Ok(joined) = std::env::join_paths(paths) { cmd.env("PATH", joined); }
         }
         let out = cmd
             .args(["--no-playlist", "--no-progress", "--restrict-filenames"])
@@ -115,6 +123,7 @@ pub fn save(ytdlp: &str, dir: &Path, page: &str, candidates: &[String], mode: Mo
             }
             Ok(o) => {
                 let err = String::from_utf8_lossy(&o.stderr);
+                log.push_str(&format!("── {url}\n{err}\n"));
                 last_err = err
                     .lines()
                     .rev()
@@ -122,14 +131,16 @@ pub fn save(ytdlp: &str, dir: &Path, page: &str, candidates: &[String], mode: Mo
                     .unwrap_or("unknown error")
                     .to_string();
             }
-            Err(e) => last_err = e.to_string(),
+            Err(e) => { log.push_str(&format!("── {url}\ncouldn't start yt-dlp: {e}\n")); last_err = e.to_string() }
         }
     }
+    // Keep the details where you can find them: the Save folder (the toolbar's folder button opens it).
+    let _ = std::fs::write(dir.join("save-log.txt"), format!("Page: {page}\nDeno: {}\n\n{log}", deno_dir.as_ref().map(|d| d.display().to_string()).unwrap_or_else(|| "system or missing".into())));
     if last_err.contains("DRM") {
         "This video is DRM protected and can't be saved".into()
     } else if last_err.is_empty() {
         "No video found on this page".into()
     } else {
-        format!("Save failed: {}", last_err.trim_start_matches("ERROR: "))
+        format!("Save failed: {} (details in save-log.txt in the Save folder)", last_err.trim_start_matches("ERROR: "))
     }
 }

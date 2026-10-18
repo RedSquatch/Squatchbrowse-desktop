@@ -14,6 +14,7 @@ serde_json = "1.0.154"
 tao = "0.37.1"
 toml = "1.1.8"
 ureq = "3.4.2"
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 wry = { version = "0.57.0", features = ["devtools"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -30,7 +31,6 @@ webkit2gtk-sys = { version = "2.0.2", features = ["v2_38"] }
 webview2-com = "0.39"
 windows = { version = "0.62", features = ["Win32_System_Com"] }
 windows-core = "0.62"
-zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 [build-dependencies]
 winresource = "0.1"

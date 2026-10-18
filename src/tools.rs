@@ -18,6 +18,14 @@ const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/downlo
 #[cfg(not(windows))]
 const YTDLP_URL: &str = "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp_linux";
 
+// Deno: yt-dlp has needed a JavaScript runtime for YouTube since late 2025 (formats go missing without one).
+#[cfg(windows)]
+const DENO_ZIP_URL: &str = "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-pc-windows-msvc.zip";
+#[cfg(all(not(windows), target_arch = "aarch64"))]
+const DENO_ZIP_URL: &str = "https://github.com/denoland/deno/releases/latest/download/deno-aarch64-unknown-linux-gnu.zip";
+#[cfg(all(not(windows), not(target_arch = "aarch64")))]
+const DENO_ZIP_URL: &str = "https://github.com/denoland/deno/releases/latest/download/deno-x86_64-unknown-linux-gnu.zip";
+
 #[cfg(windows)]
 const FFMPEG_ZIP_URL: &str =
     "https://github.com/yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip";
@@ -110,28 +118,57 @@ pub fn ffmpeg(say: &dyn Fn(&str)) -> Result<Option<PathBuf>, String> {
     }
 }
 
+/// Where Deno is, for yt-dlp: `Some(dir)` to put on yt-dlp's PATH, `None` if it's already installed
+/// system-wide or couldn't be fetched (yt-dlp then still tries, with fewer YouTube formats).
+pub fn deno(say: &dyn Fn(&str)) -> Option<PathBuf> {
+    if runs(Path::new("deno"), "--version") {
+        return None;
+    }
+    let dir = bin_dir();
+    let exe = dir.join(if cfg!(windows) { "deno.exe" } else { "deno" });
+    if exe.exists() && runs(&exe, "--version") {
+        return Some(dir);
+    }
+    say("Getting Deno, which YouTube now needs (first save only, about 40 MB)…");
+    let zip_path = dir.join("deno-download.zip");
+    let ok = download_to(DENO_ZIP_URL, &zip_path)
+        .and_then(|_| extract(&zip_path, &dir, &[(if cfg!(windows) { "deno.exe" } else { "deno" }, "")]))
+        .is_ok();
+    let _ = std::fs::remove_file(&zip_path);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755));
+    }
+    (ok && runs(&exe, "--version")).then_some(dir)
+}
+
+/// Pull the named files out of a zip into `dir`. Each pair is (file name, required folder ending, or "").
+fn extract(zip_path: &Path, dir: &Path, wanted: &[(&str, &str)]) -> anyhow::Result<()> {
+    let mut archive = zip::ZipArchive::new(std::fs::File::open(zip_path)?)?;
+    let mut found = 0;
+    for i in 0..archive.len() {
+        let mut entry = archive.by_index(i)?;
+        let name = entry.name()?.replace('\\', "/");
+        let base = name.rsplit('/').next().unwrap_or("").to_string();
+        let parent = name.strip_suffix(&base).unwrap_or("").trim_end_matches('/').to_string();
+        let Some((file, _)) = wanted.iter().find(|(f, folder)| base == *f && (folder.is_empty() || parent.ends_with(folder))) else {
+            continue;
+        };
+        let tmp = dir.join(format!("{file}.part"));
+        std::io::copy(&mut entry, &mut std::fs::File::create(&tmp)?)?;
+        std::fs::rename(&tmp, dir.join(file))?;
+        found += 1;
+    }
+    anyhow::ensure!(found == wanted.len(), "files missing from the download");
+    Ok(())
+}
+
 #[cfg(windows)]
 fn fetch_ffmpeg_windows(dir: &Path) -> anyhow::Result<()> {
     let zip_path = dir.join("ffmpeg-download.zip");
     download_to(FFMPEG_ZIP_URL, &zip_path)?;
-    let result = (|| -> anyhow::Result<()> {
-        let mut archive = zip::ZipArchive::new(std::fs::File::open(&zip_path)?)?;
-        let mut found = 0;
-        for i in 0..archive.len() {
-            let mut entry = archive.by_index(i)?;
-            let name = entry.name()?.replace('\\', "/");
-            let Some(file) = ["ffmpeg.exe", "ffprobe.exe"].into_iter().find(|f| name.ends_with(&format!("bin/{f}")))
-            else {
-                continue;
-            };
-            let tmp = dir.join(format!("{file}.part"));
-            std::io::copy(&mut entry, &mut std::fs::File::create(&tmp)?)?;
-            std::fs::rename(&tmp, dir.join(file))?;
-            found += 1;
-        }
-        anyhow::ensure!(found == 2, "ffmpeg.exe not found in the download");
-        Ok(())
-    })();
+    let result = extract(&zip_path, dir, &[("ffmpeg.exe", "bin"), ("ffprobe.exe", "bin")]);
     let _ = std::fs::remove_file(&zip_path);
     result
 }

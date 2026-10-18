@@ -8,6 +8,47 @@
   const S = (window.__squatch = {});
   const OWN = 'data-squatch';
 
+  // ---------- YouTube ads ----------
+  // YouTube serves ads from the same servers as the videos, so blocking requests can't stop them.
+  // Like uBlock Origin, strip the ad schedule out of the player data as the page loads it, and as a
+  // backstop mute and skip any ad that still starts.
+  if (/(^|\.)youtube\.com$/.test(location.hostname)) {
+    const AD_KEYS = ['adPlacements', 'adSlots', 'playerAds', 'adBreakHeartbeatParams'];
+    const prune = (o) => {
+      if (!o || typeof o !== 'object') return o;
+      AD_KEYS.forEach((k) => { if (k in o) { try { delete o[k]; } catch (_) {} } });
+      if (o.playerResponse) prune(o.playerResponse);
+      if (Array.isArray(o)) o.forEach((x) => { if (x && typeof x === 'object' && x.playerResponse) prune(x.playerResponse); });
+      return o;
+    };
+    const parse = JSON.parse;
+    JSON.parse = function () { return prune(parse.apply(this, arguments)); };
+    const rj = Response.prototype.json;
+    Response.prototype.json = function () { return rj.apply(this, arguments).then(prune); };
+    let ipr;
+    try {
+      Object.defineProperty(window, 'ytInitialPlayerResponse', { configurable: true, get: () => ipr, set: (v) => { ipr = prune(v); } });
+    } catch (_) {}
+    const css = document.createElement('style');
+    css.textContent = '#masthead-ad,#player-ads,ytd-ad-slot-renderer,ytd-in-feed-ad-layout-renderer,ytd-promoted-sparkles-web-renderer,ytd-promoted-video-renderer,ytd-display-ad-renderer,ytd-banner-promo-renderer,ytd-statement-banner-renderer,ytd-player-legacy-desktop-watch-ads-renderer,.ytp-ad-overlay-container,.ytp-ad-message-container,ytd-rich-item-renderer:has(ytd-ad-slot-renderer),ytd-engagement-panel-section-list-renderer[target-id="engagement-panel-ads"]{display:none!important}';
+    (document.head || document.documentElement).appendChild(css);
+    let mutedByUs = false;
+    setInterval(() => {
+      const p = document.getElementById('movie_player'), v = p && p.querySelector('video');
+      if (!p || !v) return;
+      if (p.classList.contains('ad-showing') || p.classList.contains('ad-interrupting')) {
+        if (!v.muted) { v.muted = true; mutedByUs = true; }
+        try { v.playbackRate = 16; } catch (_) {}
+        if (isFinite(v.duration) && v.duration > 0) { try { v.currentTime = v.duration - 0.1; } catch (_) {} }
+        const skip = document.querySelector('.ytp-ad-skip-button,.ytp-ad-skip-button-modern,.ytp-skip-ad-button,button[id^="skip-button"]');
+        if (skip) skip.click();
+      } else if (mutedByUs) {
+        mutedByUs = false; v.muted = false;
+        if (v.playbackRate > 2) v.playbackRate = 1;
+      }
+    }, 250);
+  }
+
   // ---------- page state ----------
   let lastTitle = null, lastUrl = null, lastVids = -1;
   function report(force) {
@@ -32,7 +73,7 @@
         if (el.id && !seenI.has(el.id)) { seenI.add(el.id); ids.push(el.id); }
         if (el.classList) el.classList.forEach((c) => { if (!seenC.has(c)) { seenC.add(c); classes.push(c); } });
       });
-      if (classes.length || ids.length || !hideStyle) post({ evt: 'cosmetic', classes, ids });
+      if (classes.length || ids.length || !askCosmetic.sent) { askCosmetic.sent = true; post({ evt: 'cosmetic', classes, ids }); }
     };
     S.hide = (sels) => {
       if (!sels || !sels.length) return;
@@ -46,7 +87,15 @@
       for (let i = 0; i < sels.length; i += 20) out.push(sels.slice(i, i + 20).join(',') + '{display:none!important}');
       hideStyle.textContent += out.join('\n') + '\n';
     };
-    document.addEventListener('DOMContentLoaded', askCosmetic);
+    document.addEventListener('DOMContentLoaded', () => {
+      askCosmetic();
+      // Ads that arrive later (infinite scroll, lazy slots): look again a moment after the page changes.
+      let pending = false;
+      new MutationObserver(() => {
+        if (pending) return; pending = true;
+        setTimeout(() => { pending = false; askCosmetic(); }, 1500);
+      }).observe(document.documentElement, { childList: true, subtree: true });
+    });
     window.addEventListener('load', () => { askCosmetic(); setTimeout(askCosmetic, 2500); });
   }
 
