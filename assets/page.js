@@ -145,6 +145,20 @@
     post({ evt: 'open-tab', url: a.href, background: true });
   }, true);
 
+  // Pages with Trusted Types (Google sites) reject plain strings in innerHTML. Use our own policy
+  // when the page allows one; otherwise parse into a fresh document the page's rules don't govern.
+  let TT = null;
+  try { if (window.trustedTypes && trustedTypes.createPolicy) TT = trustedTypes.createPolicy('squatch-' + Math.random().toString(36).slice(2), { createHTML: (x) => x }); } catch (e) { TT = null; }
+  S.setHTML = (el, html) => {
+    try { el.innerHTML = TT ? TT.createHTML(html) : html; return; } catch (e) { }
+    try {
+      const doc = document.implementation.createHTMLDocument('');
+      const holder = doc.createElement('div');
+      holder.innerHTML = html;   // a detached document has no Trusted Types rules
+      el.replaceChildren(...[...holder.childNodes].map((n) => document.importNode(n, true)));
+    } catch (e) { el.textContent = ''; }
+  };
+
   // ---------- videos ----------
   const PLAYER_HOSTS = /(youtube(-nocookie)?\.com|youtu\.be|vimeo\.com|dailymotion\.com|twitch\.tv|streamable\.com|rumble\.com|odysee\.com|bitchute\.com|player\.|\/embed\/)/i;
   function findVideos() {
@@ -181,14 +195,23 @@
       ['audio', 'Audio · best quality', 'Original stream, no re-encoding'],
       ['mp3', 'Audio · MP3 320 kbps', 'With title and cover art'],
     ];
-    root.innerHTML = '<style>' +
-      '.m{background:#25282c;color:#e4e1da;border:1px solid #3a3f45;border-radius:10px;box-shadow:0 8px 28px #000a;padding:6px;min-width:250px;font:13px system-ui,sans-serif}' +
+    // Built from elements, not an HTML string: YouTube (and other Google sites) enforce Trusted
+    // Types, which make innerHTML throw, so the menu silently never appeared there.
+    const st = document.createElement('style');
+    st.textContent = '.m{background:#25282c;color:#e4e1da;border:1px solid #3a3f45;border-radius:10px;box-shadow:0 8px 28px #000a;padding:6px;min-width:250px;font:13px system-ui,sans-serif}' +
       'button{all:unset;display:block;width:100%;box-sizing:border-box;padding:8px 12px;border-radius:7px;cursor:default}' +
       'button:hover,button:focus{background:#353a40;outline:none}' +
       'b{font-weight:600;display:block}span{color:#8f8b84;font-size:12px}' +
-      '.sep{height:1px;background:#3a3f45;margin:5px 6px}</style><div class="m">' +
-      opts.map((o, i) => (i === 2 ? '<div class="sep"></div>' : '') +
-        '<button data-m="' + o[0] + '"><b>' + o[1] + '</b><span>' + o[2] + '</span></button>').join('') + '</div>';
+      '.sep{height:1px;background:#3a3f45;margin:5px 6px}';
+    const box = document.createElement('div'); box.className = 'm';
+    opts.forEach((o, i) => {
+      if (i === 2) { const sep = document.createElement('div'); sep.className = 'sep'; box.appendChild(sep); }
+      const btn = document.createElement('button'); btn.dataset.m = o[0];
+      const t = document.createElement('b'); t.textContent = o[1];
+      const d = document.createElement('span'); d.textContent = o[2];
+      btn.append(t, d); box.appendChild(btn);
+    });
+    root.append(st, box);
     const close = () => { host.remove(); document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', esc, true); };
     const outside = (e) => { if (!host.contains(e.target)) close(); };
     const esc = (e) => { if (e.key === 'Escape') close(); };
@@ -336,7 +359,7 @@
     const p = prefs();
     const minutes = Math.max(1, Math.round((art.length || 0) / 1100));
 
-    root.innerHTML = `
+    S.setHTML(root, `
       <style>
         :host { all: initial; }
         .wrap { min-height: 100%; background: var(--bg); color: var(--fg); transition: background .2s, color .2s; }
@@ -374,10 +397,10 @@
           <div class="meta"></div>
           <div class="body"></div>
         </main>
-      </div>`;
+      </div>`);
     root.querySelector('h1.title').textContent = art.title || document.title;
     root.querySelector('.meta').textContent = [art.byline, `${minutes} min read`].filter(Boolean).join(' · ');
-    root.querySelector('.body').innerHTML = art.content;
+    S.setHTML(root.querySelector('.body'), art.content);
     root.querySelectorAll('.body a[href]').forEach((a) => { a.target = '_self'; });
 
     const wrap = root.querySelector('.wrap');
